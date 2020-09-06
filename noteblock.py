@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from mido import MidiFile
 from nbtschematic import SchematicFile, BlockEntity
 import nbtlib as nbt
 from sys import argv
@@ -19,11 +20,13 @@ class BlockID(Enum):
     note_block = 25
     sticky_piston = 29
     gold_block = 41
-    redstone_dust = 55
+    redstone_wire = 55
     lever = 69
+    unlit_redstone_torch = 75
     redstone_torch = 76
     glowstone = 89
-    redstone_repeater = 93
+    unpowered_repeater = 93
+    powered_repeater = 94
     wooden_slab = 126
     redstone_block = 152
     packed_ice = 174
@@ -32,39 +35,6 @@ class WoodState(Enum):
     birch = 2
     dark_oak = 5
     upside_down_dark_oak = 13
-
-class RedstoneTorchState(Enum):
-    up = 0
-    east = 1
-    west = 2
-    south = 3
-    north = 4
-
-class RedstoneRepeaterState(Enum):
-    north_1 = 0
-    north_2 = 4
-    north_3 = 8
-    north_4 = 12
-    east_1 = 1
-    east_2 = 5
-    east_3 = 9
-    east_4 = 13
-    south_1 = 2
-    south_2 = 6
-    south_3 = 10
-    south_4 = 14
-    west_1 = 3
-    west_2 = 7
-    west_3 = 11
-    west_4 = 15
-
-class PistonState(Enum):
-    down = 0
-    up = 1
-    north = 2
-    south = 3
-    west = 4
-    east = 5
 
 class Block():
     def __init__(self, block_id, data):
@@ -85,6 +55,8 @@ class Instrument(Enum):
     harp = 2
     pling = 3
     bass = 4
+
+NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
 note_parser = {
     "F#7":  (Instrument.bell, 24),
@@ -167,58 +139,61 @@ INSTRUMENT_BLOCK = {
     Instrument.chime: Block(BlockID.packed_ice, None),
     Instrument.harp: Block(BlockID.air, None),
     Instrument.pling: Block(BlockID.glowstone, None),
-    Instrument.bass: Block(BlockID.planks, WoodState.dark_oak)
+    Instrument.bass: Block(BlockID.planks, WoodState.dark_oak.value)
 }
 
-REDSTONE_TORCH_BLOCK = {
-    Direction.north: Block(BlockID.redstone_torch, RedstoneTorchState.north),
-    Direction.east: Block(BlockID.redstone_torch, RedstoneTorchState.east),
-    Direction.south: Block(BlockID.redstone_torch, RedstoneTorchState.south),
-    Direction.west: Block(BlockID.redstone_torch, RedstoneTorchState.west),
-    Direction.up: Block(BlockID.redstone_torch, RedstoneTorchState.up)
+REDSTONE_TORCH_STATE = {
+    Direction.up: 0,
+    Direction.north: 4,
+    Direction.east: 1,
+    Direction.south: 3,
+    Direction.west: 2
 }
 
-REDSTONE_REPEATER_BLOCK = {
+REDSTONE_REPEATER_STATE = {
     Direction.north: {
-        1: Block(BlockID.redstone_repeater, RedstoneRepeaterState.north_1),
-        2: Block(BlockID.redstone_repeater, RedstoneRepeaterState.north_2),
-        3: Block(BlockID.redstone_repeater, RedstoneRepeaterState.north_3),
-        4: Block(BlockID.redstone_repeater, RedstoneRepeaterState.north_4)
+        1: 0,
+        2: 4,
+        3: 8,
+        4: 12
     },
     Direction.east: {
-        1: Block(BlockID.redstone_repeater, RedstoneRepeaterState.east_1),
-        2: Block(BlockID.redstone_repeater, RedstoneRepeaterState.east_2),
-        3: Block(BlockID.redstone_repeater, RedstoneRepeaterState.east_3),
-        4: Block(BlockID.redstone_repeater, RedstoneRepeaterState.east_4)
+        1: 1,
+        2: 5,
+        3: 9,
+        4: 13
     },
     Direction.south: {
-        1: Block(BlockID.redstone_repeater, RedstoneRepeaterState.south_1),
-        2: Block(BlockID.redstone_repeater, RedstoneRepeaterState.south_2),
-        3: Block(BlockID.redstone_repeater, RedstoneRepeaterState.south_3),
-        4: Block(BlockID.redstone_repeater, RedstoneRepeaterState.south_4)
+        1: 2,
+        2: 6,
+        3: 10,
+        4: 14
     },
     Direction.west: {
-        1: Block(BlockID.redstone_repeater, RedstoneRepeaterState.west_1),
-        2: Block(BlockID.redstone_repeater, RedstoneRepeaterState.west_2),
-        3: Block(BlockID.redstone_repeater, RedstoneRepeaterState.west_3),
-        4: Block(BlockID.redstone_repeater, RedstoneRepeaterState.west_4)
+        1: 3,
+        2: 7,
+        3: 11,
+        4: 15
     }
 }
 
-STICKY_PISTON_BLOCK = {
-    Direction.north: Block(BlockID.sticky_piston, PistonState.north),
-    Direction.east: Block(BlockID.sticky_piston, PistonState.east),
-    Direction.south: Block(BlockID.sticky_piston, PistonState.south),
-    Direction.west: Block(BlockID.sticky_piston, PistonState.west),
-    Direction.up: Block(BlockID.sticky_piston, PistonState.up),
-    Direction.down: Block(BlockID.sticky_piston, PistonState.down)
+PISTON_STATE = {
+    Direction.down: 0,
+    Direction.up: 1,
+    Direction.north: 2,
+    Direction.east: 5,
+    Direction.south: 3,
+    Direction.west: 4
 }
 
 TPS = 20.0
 REDSTONE_MAX = 15
-LINE_BLOCK = Block(BlockID.planks, WoodState.birch)
-WIRING_BLOCK = Block(BlockID.planks, WoodState.dark_oak)
-WIRING_SLAB = Block(BlockID.wooden_slab, WoodState.upside_down_dark_oak)
+LINE_BLOCK = Block(BlockID.planks, WoodState.birch.value)
+WIRING_BLOCK = Block(BlockID.planks, WoodState.dark_oak.value)
+WIRING_SLAB = Block(BlockID.wooden_slab, WoodState.upside_down_dark_oak.value)
+
+def midi_note_to_scientific(note):
+    return f"{NOTES[note % len(NOTES)]}{int(note / len(NOTES))}"
 
 def parse_duration(lcd, duration):
     if "/" in duration:
@@ -235,12 +210,40 @@ def parse_file(filename):
     }
     for line in f:
         tokens = line.split()
-        notes = tokens[0:-1]
+        chord = tokens[0:-1]
         duration = tokens[-1]
-        song_info["notes"].append((notes, duration))
+        song_info["notes"].append((chord, duration))
         if "/" in duration:
             denom = int(duration.split("/")[1])
             song_info["lcd"] = lcm(denom, song_info["lcd"])
+    song_info["length"] = 0
+    for notes, duration in song_info["notes"]:
+        song_info["length"] += parse_duration(song_info["lcd"], duration)
+    return song_info
+
+def parse_midi_file(filename):
+    m = MidiFile(filename)
+    song_info = {
+        "notes": [],
+        "max_denom": 1,
+        "lcd": 1
+    }
+    time = 0.0
+    last_tick = 0
+    last_added_tick = 0
+    chord = []
+    for msg in m:
+        time += msg.time
+        if msg.type != "note_on":
+            continue
+        tick = int(time * TPS)
+        if tick == last_tick:
+            chord.append(midi_note_to_scientific(msg.note))
+        else:
+            song_info["notes"].append((chord, str(tick - last_added_tick)))
+            chord = [midi_note_to_scientific(msg.note)]
+            last_added_tick = tick
+        last_tick = tick
     song_info["length"] = 0
     for notes, duration in song_info["notes"]:
         song_info["length"] += parse_duration(song_info["lcd"], duration)
@@ -263,7 +266,7 @@ def place_block(sf, x, y, z, offset_x, offset_y, offset_z, block):
     sf.blocks[y, z, x] = block.id.value
     sf.data[y, z, x] = 0
     if block.data is not None:
-        sf.data[y, z, x] = block.data.value
+        sf.data[y, z, x] = block.data
 
 def place_note_block(sf, x, y, z, offset_x, offset_y, offset_z, instrument,
     pitch):
@@ -339,7 +342,7 @@ def gen_lines(sf, x, y, z, rows, cols, length, block):
             for depth in range(length):
                 place_block(sf, x, y, z, depth, row * 2, col * 2, block)
                 place_block(sf, x, y, z, depth, row * 2 + 1, col * 2,
-                    Block(BlockID.redstone_dust, None))
+                    Block(BlockID.redstone_wire, None))
 
 def gen_notes(sf, x, y, z, rows, cols, depth_max, song_info):
     prev_allocs = []
@@ -355,11 +358,14 @@ def gen_notes(sf, x, y, z, rows, cols, depth_max, song_info):
         allocs = []
         attempt = 0
         for note in chord:
+            try:
+                instrument, pitch = note_parser[note]
+            except KeyError:
+                continue
             while attempt in prev_allocs:
                 attempt += 1
                 if attempt >= depth_max:
                     raise PolyphonyException
-            instrument, pitch = note_parser[note]
             block = place_note_block(sf, x, y, z, attempt, y_base, z_base,
                 instrument, pitch)
             if block.id != BlockID.air:
@@ -373,54 +379,64 @@ def gen_notes(sf, x, y, z, rows, cols, depth_max, song_info):
 def gen_delay_staircase(sf, x, y, z, delay, block, slab):
     depth_max = int(delay / 8) + 2
     
-    place_block(sf, x, y, z, 0, 0, 0, Block(BlockID.redstone_dust, None))
+    place_block(sf, x, y, z, 0, 0, 0, Block(BlockID.redstone_wire, None))
     place_block(sf, x, y, z, 0, 1, 0, block)
     place_block(sf, x, y, z, 0, 3, 0, block)
 
     for depth in range(depth_max - 2):
         place_block(sf, x, y, z, 1 + depth, 0, 0, block)
         place_block(sf, x, y, z, 1 + depth, 1, 0,
-            REDSTONE_REPEATER_BLOCK[Direction.west][4])
+            Block(BlockID.unpowered_repeater,
+            REDSTONE_REPEATER_STATE[Direction.west][4]))
         place_block(sf, x, y, z, 1 + depth, 2, 0, block)
         place_block(sf, x, y, z, 1 + depth, 3, 0,
-            REDSTONE_REPEATER_BLOCK[Direction.east][4])
+            Block(BlockID.unpowered_repeater,
+            REDSTONE_REPEATER_STATE[Direction.east][4]))
     
     place_block(sf, x, y, z, depth_max - 1, 0, 0,
-        Block(BlockID.planks, WoodState.dark_oak))
+        Block(BlockID.planks, WoodState.dark_oak.value))
     if delay <= 4:
         place_block(sf, x, y, z, depth_max - 1, 0, 0,
-            Block(BlockID.wooden_slab, WoodState.upside_down_dark_oak))
+            Block(BlockID.wooden_slab, WoodState.upside_down_dark_oak.value))
     
     delay = delay % 8 if delay % 8 > 0 else 8
     place_block(sf, x, y, z, depth_max - 1, 1, 0,
-        REDSTONE_REPEATER_BLOCK[Direction.west][min(4, delay)])
+        Block(BlockID.unpowered_repeater,
+        REDSTONE_REPEATER_STATE[Direction.west][min(4, delay)]))
     place_block(sf, x, y, z, depth_max - 1, 2, 0, block)
     if delay > 4:
         place_block(sf, x, y, z, depth_max - 1, 3, 0,
-            REDSTONE_REPEATER_BLOCK[Direction.east][delay - 4])
+            Block(BlockID.unpowered_repeater,
+            REDSTONE_REPEATER_STATE[Direction.east][delay - 4]))
         place_block(sf, x, y, z, depth_max, 3, 0, block)
     else:
         place_block(sf, x, y, z, depth_max - 1, 3, 0,
-            Block(BlockID.redstone_dust, None))
+            Block(BlockID.redstone_wire, None))
     place_block(sf, x, y, z, depth_max, 1, 0, block)
     place_block(sf, x, y, z, depth_max, 2, 0,
-        Block(BlockID.redstone_dust, None))
+        Block(BlockID.redstone_wire, None))
 
     return depth_max + 1
 
-def gen_torch_tower(sf, x, y, z, height, block):
+def gen_torch_tower(sf, x, y, z, height, initial_state, block):
+    state = initial_state
     for i in range(height):
         if i % 2 == 0:
             place_block(sf, x, y, z, 0, i, 0, block)
         else:
             place_block(sf, x, y, z, 0, i, 0,
-                REDSTONE_TORCH_BLOCK[Direction.up])
+                Block(BlockID.redstone_torch if state
+                    else BlockID.unlit_redstone_torch,
+                REDSTONE_TORCH_STATE[Direction.up]))
+            state = not state
 
 def gen_engine(sf, x, y, z, rows, cols, tick_interval, block, slab):
-    place_block(sf, x, y, z, 0, 0, 0, REDSTONE_TORCH_BLOCK[Direction.north])
+    place_block(sf, x, y, z, 0, 0, 0, Block(BlockID.redstone_torch,
+        REDSTONE_TORCH_STATE[Direction.north]))
     place_block(sf, x, y, z, 0, 1, 0, slab)
     place_block(sf, x, y, z, 0, 2, 0,
-        REDSTONE_REPEATER_BLOCK[Direction.west][1])
+        Block(BlockID.unpowered_repeater,
+        REDSTONE_REPEATER_STATE[Direction.west][1]))
     
     stair_depth = gen_delay_staircase(sf, x + 1, y, z, tick_interval,
         block, slab)
@@ -440,17 +456,19 @@ def gen_engine(sf, x, y, z, rows, cols, tick_interval, block, slab):
 
     # Generate torch towers
     place_block(sf, x, y, z, 1 + stair_depth, 2 * rows - 3, 0,
-        REDSTONE_TORCH_BLOCK[Direction.south])
+        Block(BlockID.redstone_torch, REDSTONE_TORCH_STATE[Direction.south]))
     place_block(sf, x, y, z, 2 + stair_depth, 2 * rows - 3, 0, block)
     place_block(sf, x, y, z, stair_depth, 2 * rows - 3, 1, block)
     place_block(sf, x, y, z, 1 + stair_depth, 2 * rows - 3, 1, block)
     place_block(sf, x, y, z, 2 + stair_depth, 2 * rows - 3, 1,
-        REDSTONE_TORCH_BLOCK[Direction.south])
+        Block(BlockID.redstone_torch, REDSTONE_TORCH_STATE[Direction.south]))
     place_block(sf, x, y, z, 1 + stair_depth, 2 * rows - 2, 0, block)
     place_block(sf, x, y, z, 2 + stair_depth, 2 * rows - 2, 0,
-        REDSTONE_TORCH_BLOCK[Direction.south])
+        Block(BlockID.unlit_redstone_torch,
+        REDSTONE_TORCH_STATE[Direction.south]))
     place_block(sf, x, y, z, 1 + stair_depth, 2 * rows - 2, 1,
-        REDSTONE_TORCH_BLOCK[Direction.south])
+        Block(BlockID.unlit_redstone_torch,
+        REDSTONE_TORCH_STATE[Direction.south]))
     place_block(sf, x, y, z, 2 + stair_depth, 2 * rows - 2, 1, block)
     place_block(sf, x, y, z, 2 + stair_depth, 2 * rows - 1, 0, block)
     delay_remaining = tick_interval * (int(rows / 2) - 1) - 5
@@ -467,42 +485,54 @@ def gen_engine(sf, x, y, z, rows, cols, tick_interval, block, slab):
         raise TorchTowerException
     place_block(sf, x, y, z, stair_depth, 2 * rows - 4 * row - 6, 1, block)
     place_block(sf, x, y, z, stair_depth, 2 * rows - 4 * row - 5, 1,
-        Block(BlockID.redstone_dust, None))
+        Block(BlockID.redstone_wire, None))
     place_block(sf, x, y, z, 1 + stair_depth, 2 * rows - 4 * row - 5, 1, block)
     place_block(sf, x, y, z, 1 + stair_depth, 2 * rows - 4 * row - 4, 0, block)
     place_block(sf, x, y, z, stair_depth, 2 * rows - 4 * row - 4, 1, block)
     place_block(sf, x, y, z, 2 + stair_depth, 2 * rows - 4 * row - 4, 0,
-        REDSTONE_TORCH_BLOCK[Direction.east])
+        Block(BlockID.redstone_torch, REDSTONE_TORCH_STATE[Direction.east]))
     place_block(sf, x, y, z, 1 + stair_depth, 2 * rows - 4 * row - 4, 1,
-        REDSTONE_TORCH_BLOCK[Direction.up])
+        Block(BlockID.redstone_torch, REDSTONE_TORCH_STATE[Direction.up]))
     delay_remaining -= row * tick_interval
     gen_torch_tower(sf, x + 2 + stair_depth, y + 2 * rows - 4 * row - 3, z,
-        4 * row, block)
+        4 * row, False, block)
     gen_torch_tower(sf, x + 1 + stair_depth, y + 2 * rows - 4 * row - 3, z + 1,
-        4 * row, block)
+        4 * row, False, block)
     delay_remaining -= 2 * row
     if delay_remaining >= 4:
         place_block(sf, x, y, z, stair_depth - 1, 2 * rows - 3, 1, block)
         place_block(sf, x, y, z, stair_depth, 2 * rows - 2, 0, block)
         place_block(sf, x, y, z, stair_depth - 1, 2 * rows - 2, 1,
-            REDSTONE_REPEATER_BLOCK[Direction.west][4])
+            Block(BlockID.unpowered_repeater,
+            REDSTONE_REPEATER_STATE[Direction.west][4]))
         place_block(sf, x, y, z, stair_depth, 2 * rows - 1, 0,
-            REDSTONE_REPEATER_BLOCK[Direction.west][4])
+            Block(BlockID.unpowered_repeater,
+            REDSTONE_REPEATER_STATE[Direction.west][4]))
         delay_remaining -= 4
     place_block(sf, x, y, z, stair_depth, 2 * rows - 2, 1,
-        REDSTONE_REPEATER_BLOCK[Direction.west][1 + delay_remaining])
+        Block(BlockID.unpowered_repeater,
+        REDSTONE_REPEATER_STATE[Direction.west][1 + delay_remaining]))
     place_block(sf, x, y, z, 1 + stair_depth, 2 * rows - 1, 0,
-        REDSTONE_REPEATER_BLOCK[Direction.west][1 + delay_remaining])
+        Block(BlockID.unpowered_repeater,
+        REDSTONE_REPEATER_STATE[Direction.west][1 + delay_remaining]))
     place_block(sf, x, y, z, stair_depth + 1, 2 * rows - 7, 0,
-        REDSTONE_TORCH_BLOCK[Direction.west])
+        Block(BlockID.unlit_redstone_torch,
+        REDSTONE_TORCH_STATE[Direction.west]))
     place_block(sf, x, y, z, stair_depth, 2 * rows - 7, 1,
-        REDSTONE_TORCH_BLOCK[Direction.west])
+        Block(BlockID.unlit_redstone_torch,
+        REDSTONE_TORCH_STATE[Direction.west]))
     place_block(sf, x, y, z, stair_depth + 1, 2 * rows - 6, 0, block)
     place_block(sf, x, y, z, stair_depth + 2, 2 * rows - 6, 0,
-        REDSTONE_TORCH_BLOCK[Direction.east])
+        Block(BlockID.redstone_torch, REDSTONE_TORCH_STATE[Direction.east]))
     place_block(sf, x, y, z, stair_depth, 2 * rows - 6, 1, block)
     place_block(sf, x, y, z, stair_depth + 1, 2 * rows - 6, 1,
-        REDSTONE_TORCH_BLOCK[Direction.east])
+        Block(BlockID.redstone_torch, REDSTONE_TORCH_STATE[Direction.east]))
+    place_block(sf, x, y, z, stair_depth + 2, 2 * rows - 4, 0,
+        Block(BlockID.unlit_redstone_torch,
+        REDSTONE_TORCH_STATE[Direction.up]))
+    place_block(sf, x, y, z, stair_depth + 1, 2 * rows - 4, 1,
+        Block(BlockID.unlit_redstone_torch,
+        REDSTONE_TORCH_STATE[Direction.up]))
 
     stack_area(sf, x, y, z, x + 2 + stair_depth,
         y + int(rows / 2) * 4 - 1, z + 1, 0, cols - 1, 0)
@@ -545,10 +575,16 @@ def export_schematic(filename, song_info, rows):
     sf.save(f"{filename}.schematic")
 
 def main():
-    filename = argv[1]
-    min_bpm = float(argv[2])
+    mode = argv[1]
+    filename = argv[2]
     rows = int(argv[3])
-    song_info = parse_file(filename)
+    min_bpm = float(argv[4])
+    if mode == "transcribed":
+        song_info = parse_file(filename)
+    elif mode == "midi":
+        song_info = parse_midi_file(filename)
+    else:
+        exit(1)
 
     song_info["compat_bpms"] = list_bpms(song_info, min_bpm)
     print("Please type the ID of one of the following BPM options:")
